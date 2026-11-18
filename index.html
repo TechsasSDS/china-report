@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live Report Dashboard</title>
+  <title>Live Service Report / 实时维修报告</title>
   <style>
     :root {
       --bg: #0b0f14;
@@ -14,7 +14,7 @@
       --success: #38bdf8;       /* Blue for success */
       --error: #ff4d4f;         /* Red for error */
     }
-    * { box-sizing: border-box; font-family: 'Segoe UI', Consolas, monospace; }
+    * { box-sizing: border-box; font-family: 'Segoe UI', 'Microsoft YaHei', Consolas, monospace; }
     body {
       margin: 0; padding: 20px;
       background: var(--bg); color: var(--text);
@@ -28,7 +28,7 @@
     .controls { display: flex; gap: 10px; flex-wrap: wrap; }
     input[type="text"] {
       background: var(--panel); border: 1px solid var(--primary);
-      color: var(--text); padding: 8px 12px; border-radius: 6px; outline: none; min-width: 220px;
+      color: var(--text); padding: 8px 12px; border-radius: 6px; outline: none; min-width: 240px;
     }
     button {
       background: var(--primary); color: #05140a; font-weight: bold;
@@ -44,33 +44,66 @@
     }
     table { width: 100%; border-collapse: collapse; font-size: 14px; }
     th, td {
-      padding: 10px 12px; text-align: left;
+      padding: 10px 12px; text-align: left; vertical-align: middle;
       border-bottom: 1px solid var(--border); white-space: nowrap;
     }
     th {
       background: #0d261a; color: var(--primary);
-      position: sticky; top: 0;
+      position: sticky; top: 0; z-index: 1;
     }
     tr:hover { background: #14241c; }
+
+    /* Live Image Thumbnails */
+    .img-group { display: flex; gap: 6px; align-items: center; }
+    .thumb {
+      width: 56px; height: 56px; object-fit: cover;
+      border: 1px solid var(--primary); border-radius: 6px;
+      cursor: pointer; transition: transform 0.15s ease;
+      background: #050a0e;
+    }
+    .thumb:hover { transform: scale(1.1); }
+
+    /* Fullscreen Image Preview Modal */
+    .modal {
+      display: none; position: fixed; inset: 0; z-index: 999;
+      background: rgba(0, 0, 0, 0.88);
+      justify-content: center; align-items: center; flex-direction: column; padding: 20px;
+    }
+    .modal.open { display: flex; }
+    .modal img {
+      max-width: 92vw; max-height: 82vh;
+      border: 2px solid var(--primary); border-radius: 8px;
+    }
+    .modal-close {
+      margin-top: 14px; padding: 8px 22px;
+      background: var(--primary); color: #05140a;
+      font-weight: bold; border: none; border-radius: 6px; cursor: pointer;
+    }
   </style>
 </head>
 <body>
 
   <div class="header">
-    <h1>📊 Live Report</h1>
+    <h1>📊 Live Report / 实时数据报告</h1>
     <div class="controls">
-      <input type="text" id="searchBox" placeholder="Search data..." oninput="filterTable()" />
-      <button onclick="loadData()">🔄 Refresh</button>
+      <input type="text" id="searchBox" placeholder="Search / 搜索..." oninput="filterTable()" />
+      <button onclick="loadData()">🔄 Refresh / 刷新</button>
     </div>
   </div>
 
-  <div id="status">Loading data...</div>
+  <div id="status">Loading data... / 正在加载数据...</div>
 
   <div class="table-wrap">
     <table id="reportTable">
       <thead id="tableHead"></thead>
       <tbody id="tableBody"></tbody>
     </table>
+  </div>
+
+  <!-- Image Zoom Modal -->
+  <div id="imgModal" class="modal" onclick="closeModal()">
+    <img id="modalImg" src="" alt="Preview" onclick="event.stopPropagation()" />
+    <button class="modal-close" onclick="closeModal()">✖ Close / 关闭</button>
   </div>
 
   <script>
@@ -80,20 +113,19 @@
     async function loadData() {
       const statusEl = document.getElementById('status');
       try {
-        // Cache නොවී අලුත්ම data ගන්න timestamp එකක් දානවා
         const res = await fetch('data.json?t=' + new Date().getTime());
-        if (!res.ok) throw new Error('data.json හමු වුණේ නැහැ (මුලින්ම Google Sheet එකෙන් Sync කරන්න).');
-        
+        if (!res.ok) throw new Error('data.json not found / 未找到数据文件 (Please sync from Google Sheet first)');
+
         const payload = await res.json();
         headers = payload.headers || [];
         allRows = payload.rows || [];
 
         renderTable(allRows);
         statusEl.className = 'msg-success';
-        statusEl.textContent = `✔ Live Data සාර්ථකව Load විය | අවසන් යාවත්කාලීනය: ${payload.updatedAt} | මුළු පේළි: ${allRows.length}`;
+        statusEl.textContent = `✔ Live Data Loaded Successfully / 实时数据加载成功 | Last Updated / 最后更新: ${payload.updatedAt} | Total Rows / 总计: ${allRows.length}`;
       } catch (err) {
         statusEl.className = 'msg-error';
-        statusEl.textContent = '✖ දෝෂයකි: ' + err.message;
+        statusEl.textContent = '✖ Error / 错误: ' + err.message;
       }
     }
 
@@ -102,8 +134,36 @@
         '<tr>' + headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
 
       document.getElementById('tableBody').innerHTML = rows.map(row =>
-        '<tr>' + row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('') + '</tr>'
+        '<tr>' + row.map(cell => `<td>${formatCell(cell)}</td>`).join('') + '</tr>'
       ).join('');
+    }
+
+    function formatCell(cell) {
+      const str = String(cell ?? '').trim();
+      if (str.includes('images/')) {
+        const paths = str.split(',').map(p => p.trim()).filter(p => p.startsWith('images/'));
+        if (paths.length > 0) {
+          return '<div class="img-group">' + paths.map(p => {
+            const safePath = escapeHtml(p);
+            return `<img src="${safePath}" class="thumb" loading="lazy" onclick="openModal('${safePath}')" alt="Image" title="Click to zoom / 点击放大" />`;
+          }).join('') + '</div>';
+        }
+      }
+      if (/^https?:\/\//i.test(str)) {
+        const safeUrl = escapeHtml(str);
+        return `<a href="${safeUrl}" target="_blank" style="color:var(--primary);">${safeUrl}</a>`;
+      }
+      return escapeHtml(str);
+    }
+
+    function openModal(src) {
+      document.getElementById('modalImg').src = src;
+      document.getElementById('imgModal').classList.add('open');
+    }
+
+    function closeModal() {
+      document.getElementById('imgModal').classList.remove('open');
+      document.getElementById('modalImg').src = '';
     }
 
     function filterTable() {
@@ -121,7 +181,6 @@
     }
 
     loadData();
-    // තත්පර 60කට සැරයක් ඉබේම Refresh වෙන්න
     setInterval(loadData, 60000);
   </script>
 </body>
