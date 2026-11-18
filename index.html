@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Report Dashboard</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #111820;
+      --border: #1e3a2f;
+      --primary: #00e676;       /* Green theme */
+      --text: #c8facc;
+      --success: #38bdf8;       /* Blue for success */
+      --error: #ff4d4f;         /* Red for error */
+    }
+    * { box-sizing: border-box; font-family: 'Segoe UI', Consolas, monospace; }
+    body {
+      margin: 0; padding: 20px;
+      background: var(--bg); color: var(--text);
+    }
+    .header {
+      display: flex; flex-wrap: wrap; gap: 12px;
+      justify-content: space-between; align-items: center;
+      margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px;
+    }
+    h1 { margin: 0; font-size: 20px; color: var(--primary); }
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; }
+    input[type="text"] {
+      background: var(--panel); border: 1px solid var(--primary);
+      color: var(--text); padding: 8px 12px; border-radius: 6px; outline: none; min-width: 220px;
+    }
+    button {
+      background: var(--primary); color: #05140a; font-weight: bold;
+      border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;
+    }
+    button:hover { opacity: 0.9; }
+    #status { margin-bottom: 12px; font-size: 14px; font-weight: bold; }
+    .msg-success { color: var(--success); }
+    .msg-error { color: var(--error); }
+    .table-wrap {
+      overflow-x: auto; background: var(--panel);
+      border: 1px solid var(--border); border-radius: 8px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td {
+      padding: 10px 12px; text-align: left;
+      border-bottom: 1px solid var(--border); white-space: nowrap;
+    }
+    th {
+      background: #0d261a; color: var(--primary);
+      position: sticky; top: 0;
+    }
+    tr:hover { background: #14241c; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>📊 Live Report</h1>
+    <div class="controls">
+      <input type="text" id="searchBox" placeholder="Search data..." oninput="filterTable()" />
+      <button onclick="loadData()">🔄 Refresh</button>
+    </div>
+  </div>
+
+  <div id="status">Loading data...</div>
+
+  <div class="table-wrap">
+    <table id="reportTable">
+      <thead id="tableHead"></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    let allRows = [];
+    let headers = [];
+
+    async function loadData() {
+      const statusEl = document.getElementById('status');
+      try {
+        // Cache නොවී අලුත්ම data ගන්න timestamp එකක් දානවා
+        const res = await fetch('data.json?t=' + new Date().getTime());
+        if (!res.ok) throw new Error('data.json හමු වුණේ නැහැ (මුලින්ම Google Sheet එකෙන් Sync කරන්න).');
+        
+        const payload = await res.json();
+        headers = payload.headers || [];
+        allRows = payload.rows || [];
+
+        renderTable(allRows);
+        statusEl.className = 'msg-success';
+        statusEl.textContent = `✔ Live Data සාර්ථකව Load විය | අවසන් යාවත්කාලීනය: ${payload.updatedAt} | මුළු පේළි: ${allRows.length}`;
+      } catch (err) {
+        statusEl.className = 'msg-error';
+        statusEl.textContent = '✖ දෝෂයකි: ' + err.message;
+      }
+    }
+
+    function renderTable(rows) {
+      document.getElementById('tableHead').innerHTML =
+        '<tr>' + headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
+
+      document.getElementById('tableBody').innerHTML = rows.map(row =>
+        '<tr>' + row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('') + '</tr>'
+      ).join('');
+    }
+
+    function filterTable() {
+      const q = document.getElementById('searchBox').value.toLowerCase();
+      const filtered = allRows.filter(row =>
+        row.some(cell => String(cell).toLowerCase().includes(q))
+      );
+      renderTable(filtered);
+    }
+
+    function escapeHtml(val) {
+      return String(val ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    loadData();
+    // තත්පර 60කට සැරයක් ඉබේම Refresh වෙන්න
+    setInterval(loadData, 60000);
+  </script>
+</body>
+</html>
